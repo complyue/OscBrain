@@ -70,7 +70,7 @@ class LetterNet:
 
       * hardcoded letter encoding in SDRs
 
-      * capped sparse excitary/inhibitary synaptic connections
+      * capped sparse excitatory/inhibitory synaptic connections
 
     """
 
@@ -98,12 +98,12 @@ class LetterNet:
             for l_col in range(N_COLS_PER_LETTER):
                 self.sdr_indices[lcode, l_col] = lbase + l_col * SPARSE_FACTOR
 
-        # excitary synapse links/efficacies
+        # excitatory synapse links/efficacies
         self.excit_links = np.zeros(MAX_SYNAPSES, dtype=SYNAPSE_LINK_DTYPE)
         self.excit_effis = np.zeros(MAX_SYNAPSES, dtype="f4")
         self.excit_synap = 0
 
-        # inhibitary synapse links/efficacies
+        # inhibitory synapse links/efficacies
         self.inhib_links = np.zeros(MAX_SYNAPSES, dtype=SYNAPSE_LINK_DTYPE)
         self.inhib_effis = np.zeros(MAX_SYNAPSES, dtype="f4")
         self.inhib_synap = 0
@@ -141,7 +141,7 @@ class LetterNet:
     def N_SPARSE_COLS_PER_LETTER(self):
         return self.N_COLS_PER_LETTER * self.SPARSE_FACTOR
 
-    def create_inhibitary_links_randomly(self, n, compact=True, normalize=True):
+    def create_inhibitory_links_randomly(self, n, compact=True, normalize=True):
         assert 0 < n < self.MAX_SYNAPSES
         self.inhib_synap = _connect_synapses_randomly(
             n,
@@ -166,7 +166,7 @@ class LetterNet:
                 self.inhib_links, self.inhib_effis, self.inhib_synap
             )
 
-    def create_excitary_links_randomly(self, n, compact=True, normalize=True):
+    def create_excitatory_links_randomly(self, n, compact=True, normalize=True):
         assert 0 < n < self.MAX_SYNAPSES
         self.excit_synap = _connect_synapses_randomly(
             n,
