@@ -69,6 +69,7 @@ class Alphabet:
         w_bound, w_lcode = data
         assert w_bound.ndim == w_lcode.ndim == 1
         assert w_bound[-1] == w_lcode.size
+        assert np.all((0 <= w_lcode) & (w_lcode < 26))
 
         words = []
         l_bound = 0
@@ -128,6 +129,15 @@ class LetterNet:
         self.N_CELLS_PER_COL = N_CELLS_PER_COL
         self.ALPHABET = ALPHABET
 
+    """
+    load factor affects synapse dropout behavior
+
+    once number of synapses exceeds MAX_SYNAPSES, weakest synapse links will
+    be dropped out, so that the strongest synaptic links per this ration is
+    kept.
+    """
+    LOAD_FACTOR = 0.8
+
     @property
     def MAX_SYNAPSES(self):
         return self.excit_links.size
@@ -148,9 +158,111 @@ class LetterNet:
     def N_SPARSE_COLS_PER_LETTER(self):
         return self.N_COLS_PER_LETTER * self.SPARSE_FACTOR
 
+    def create_excitary_links_randomly(self, n, compact=True, normalize=True):
+        assert 0 < n < self.MAX_SYNAPSES
+        self.excit_synap = _connect_synapses_randomly(
+            n,
+            self.excit_links,
+            self.excit_effis,
+            self.excit_synap,
+            self.LOAD_FACTOR,
+            self.ALPHABET_SIZE,
+            self.N_COLS_PER_LETTER,
+            self.SPARSE_FACTOR,
+            self.N_CELLS_PER_COL,
+        )
+        if compact:
+            self.excit_synap = _compact_synapses(
+                self.excit_links,
+                self.excit_effis,
+                self.excit_synap,
+                self.LOAD_FACTOR,
+            )
+        if normalize:
+            _normalize_synapse_efficacies(self.excit_effis, self.excit_synap)
+
+    def create_inhibitary_links_randomly(self, n, compact=True, normalize=True):
+        assert 0 < n < self.MAX_SYNAPSES
+        self.inhib_synap = _connect_synapses_randomly(
+            n,
+            self.inhib_links,
+            self.inhib_effis,
+            self.inhib_synap,
+            self.LOAD_FACTOR,
+            self.ALPHABET_SIZE,
+            self.N_COLS_PER_LETTER,
+            self.SPARSE_FACTOR,
+            self.N_CELLS_PER_COL,
+        )
+        if compact:
+            self.inhib_synap = _compact_synapses(
+                self.inhib_links,
+                self.inhib_effis,
+                self.inhib_synap,
+                self.LOAD_FACTOR,
+            )
+        if normalize:
+            _normalize_synapse_efficacies(self.inhib_effis, self.inhib_synap)
+
+    def learn_words_as_sequence(self, words, compact=True, normalize=True):
+        _, w_lcode = self.ALPHABET.encode_words(words)
+        self.excit_synap = _connect_letter_sequence(
+            self.sdr_indices,
+            self.excit_links,
+            self.excit_effis,
+            self.excit_synap,
+            w_lcode,
+            self.LOAD_FACTOR,
+            self.N_CELLS_PER_COL,
+        )
+        if compact:
+            self.excit_synap = _compact_synapses(
+                self.excit_links,
+                self.excit_effis,
+                self.excit_synap,
+                self.LOAD_FACTOR,
+            )
+        if normalize:
+            _normalize_synapse_efficacies(self.excit_effis, self.excit_synap)
+
+    def learn_words(self, words, compact=True, normalize=True):
+        w_bound, w_lcode = self.ALPHABET.encode_words(words)
+        self.excit_synap = _connect_per_words(
+            self.sdr_indices,
+            self.excit_links,
+            self.excit_effis,
+            self.excit_synap,
+            w_lcode,
+            w_bound,
+            w_lcode,
+            self.LOAD_FACTOR,
+            self.N_CELLS_PER_COL,
+        )
+        if compact:
+            self.excit_synap = _compact_synapses(
+                self.excit_links,
+                self.excit_effis,
+                self.excit_synap,
+                self.LOAD_FACTOR,
+            )
+        if normalize:
+            _normalize_synapse_efficacies(self.excit_effis, self.excit_synap)
+
 
 @njit
-def _compact_synapses(links, effis, vlen, load_factor=0.8, normlize=True):
+def _normalize_synapse_efficacies(effis, vlen):
+    """
+    normalize efficacies, by scaling the smallest value to be 1.0
+    """
+    assert effis.ndim == 1
+    assert 0 <= vlen <= effis.size
+
+    if vlen > 0:
+        effis[:vlen] /= effis[0]
+
+
+@njit
+def _compact_synapses(links, effis, vlen, LOAD_FACTOR=0.8):
     assert links.ndim == effis.ndim == 1
     assert links.shape == effis.shape
 
@@ -176,7 +288,7 @@ def _compact_synapses(links, effis, vlen, load_factor=0.8, normlize=True):
             new_vlen += 1
 
     # store new data back inplace
-    n2drop = new_vlen - int(links.size * load_factor)
+    n2drop = new_vlen - int(links.size * LOAD_FACTOR)
     if n2drop > 0:  # drop synapses with smallest efficacies
         keep_idxs = np.argsort(new_effis[:new_vlen])[n2drop:]
         assert keep_idxs.size == new_vlen - n2drop  # so obvious
@@ -187,12 +299,6 @@ def _compact_synapses(links, effis, vlen, load_factor=0.8, normlize=True):
     else:  # not overloaded yet, simply store back
         links[:new_vlen] = new_links[:new_vlen]
         effis[:new_vlen] = new_effis[:new_vlen]
-
-    assert new_vlen >= 1, "bug?!"
-    if normlize:
-        # normalize them, by scaling the smallest remaining value to be 1.0
-        # todo: this has implications for training/learning, reason about
-        effis[:new_vlen] /= effis[0]
 
     return new_vlen
 
@@ -205,8 +311,7 @@ def _connect_per_words(
     vlen,
     w_bound,
     w_lcode,
-    load_factor=0.8,
-    normalize=True,
+    LOAD_FACTOR=0.8,
     N_CELLS_PER_COL=100,  # per mini-column capacity
 ):
     ALPHABET_SIZE, N_COLS_PER_LETTER = sdr_indices.shape
@@ -220,11 +325,8 @@ def _connect_per_words(
         pre_lcode = w_lcode[l_bound]
         for post_lcode in w_lcode[l_bound + 1 : r_bound]:
             if vlen >= links.size:
-                # compat the synapses once exceeding allowed maximum,
-                # but don't normlize at this moment
-                vlen = _compact_synapses(
-                    links, effis, vlen, load_factor, normlize=False
-                )
+                # compat the synapses once exceeding allowed maximum
+                vlen = _compact_synapses(links, effis, vlen, LOAD_FACTOR)
 
             links[vlen]["i0"] = sdr_indices[pre_lcode][
                 np.random.randint(N_COLS_PER_LETTER)
@@ -239,9 +341,6 @@ def _connect_per_words(
             pre_lcode = post_lcode
         l_bound = r_bound
 
-    if normalize:  # requested for this batch
-        vlen = _compact_synapses(links, effis, vlen, load_factor, normlize=True)
-
     return vlen
 
 
@@ -252,8 +351,7 @@ def _connect_letter_sequence(
     effis,
     vlen,
     lcode_seq,
-    load_factor=0.8,
-    normalize=True,
+    LOAD_FACTOR=0.8,
     N_CELLS_PER_COL=100,  # per mini-column capacity
 ):
     ALPHABET_SIZE, N_COLS_PER_LETTER = sdr_indices.shape
@@ -265,9 +363,8 @@ def _connect_letter_sequence(
         # randomly pick 1 column from each letter's representational columns,
         # then randomly pick 1 cell from that column
         if vlen >= links.size:
-            # compat the synapses once exceeding allowed maximum,
-            # but don't normlize at this moment
-            vlen = _compact_synapses(links, effis, vlen, load_factor, normlize=False)
+            # compat the synapses once exceeding allowed maximum
+            vlen = _compact_synapses(links, effis, vlen, LOAD_FACTOR)
 
         links[vlen]["i0"] = sdr_indices[pre_lcode][
             np.random.randint(N_COLS_PER_LETTER)
@@ -281,9 +378,6 @@ def _connect_letter_sequence(
 
         pre_lcode = post_lcode
 
-    if normalize:  # requested for this batch
-        vlen = _compact_synapses(links, effis, vlen, load_factor, normlize=True)
-
     return vlen
 
 
@@ -293,8 +387,7 @@ def _connect_synapses_randomly(
     links,
     effis,
     vlen,
-    load_factor=0.8,
-    normalize=True,
+    LOAD_FACTOR=0.8,
     ALPHABET_SIZE=26,  # size of alphabet
     N_COLS_PER_LETTER=10,  # distributedness of letter SDR
     SPARSE_FACTOR=5,  # sparseness of letter SDR
@@ -306,9 +399,8 @@ def _connect_synapses_randomly(
 
     for _ in range(n):
         if vlen >= links.size:
-            # compat the synapses once exceeding allowed maximum,
-            # but don't normlize at this moment
-            vlen = _compact_synapses(links, effis, vlen, load_factor, normlize=False)
+            # compat the synapses once exceeding allowed maximum
+            vlen = _compact_synapses(links, effis, vlen, LOAD_FACTOR)
 
         # randomly pick 2 cells and make a synapse
         links[vlen]["i0"] = np.random.randint(N_FULL_CELLS)
@@ -316,8 +408,5 @@ def _connect_synapses_randomly(
         effis[vlen] = 1.0
 
         vlen += 1
-
-    if normalize:  # requested for this batch
-        vlen = _compact_synapses(links, effis, vlen, load_factor, normlize=True)
 
     return vlen
