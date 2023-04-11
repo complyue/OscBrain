@@ -162,7 +162,9 @@ class LetterNet:
                 self.LOAD_FACTOR,
             )
         if normalize:
-            _normalize_synapse_efficacies(self.inhib_effis, self.inhib_synap)
+            _normalize_synapse_efficacies(
+                self.inhib_links, self.inhib_effis, self.inhib_synap
+            )
 
     def create_excitary_links_randomly(self, n, compact=True, normalize=True):
         assert 0 < n < self.MAX_SYNAPSES
@@ -185,7 +187,9 @@ class LetterNet:
                 self.LOAD_FACTOR,
             )
         if normalize:
-            _normalize_synapse_efficacies(self.excit_effis, self.excit_synap)
+            _normalize_synapse_efficacies(
+                self.excit_links, self.excit_effis, self.excit_synap
+            )
 
     def learn_words_as_sequence(self, words, compact=True, normalize=True):
         _, w_lcode = self.ALPHABET.encode_words(words)
@@ -206,7 +210,9 @@ class LetterNet:
                 self.LOAD_FACTOR,
             )
         if normalize:
-            _normalize_synapse_efficacies(self.excit_effis, self.excit_synap)
+            _normalize_synapse_efficacies(
+                self.excit_links, self.excit_effis, self.excit_synap
+            )
 
     def learn_words(self, words, compact=True, normalize=True):
         w_bound, w_lcode = self.ALPHABET.encode_words(words)
@@ -229,19 +235,37 @@ class LetterNet:
                 self.LOAD_FACTOR,
             )
         if normalize:
-            _normalize_synapse_efficacies(self.excit_effis, self.excit_synap)
+            _normalize_synapse_efficacies(
+                self.excit_links, self.excit_effis, self.excit_synap
+            )
 
 
 @njit
-def _normalize_synapse_efficacies(effis, vlen):
+def _normalize_synapse_efficacies(links, effis, vlen):
     """
     normalize efficacies, by scaling the smallest value to be 1.0
     """
     assert effis.ndim == 1
     assert 0 <= vlen <= effis.size
 
-    if vlen > 0:
-        effis[:vlen] /= effis[0]
+    if vlen < 1:  # specialize special case
+        return
+
+    if vlen == 1:  # specialize special case
+        effis[0] = 1.0
+        return
+
+    sorted = True
+    for i in range(1, effis.size):
+        if effis[i] < effis[i - 1]:
+            sorted = False
+            break
+    if not sorted:
+        sidxs = np.argsort(effis[:vlen])
+        links[:vlen] = links[sidxs]
+        effis[:vlen] = effis[sidxs]
+
+    effis[:vlen] /= effis[0]
 
 
 @njit
