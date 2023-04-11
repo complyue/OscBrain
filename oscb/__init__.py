@@ -12,7 +12,10 @@ __all__ = [
     'Arrow', 'value', 'field', 'setup_notebook',
 
     # exports from .core
-    'LetterNet', 'Alphabet', 'random_seed', 'SYNAPSE_LINK_DTYPE',
+    'random_seed', 'SYNAPSE_LINK_DTYPE',
+
+    # exports from .lnet
+    'LetterNet', 'Alphabet',
 
     # exports from .sim
     'LetterNetSim',
@@ -21,4 +24,5 @@ __all__ = [
 
 from .bkh import *
 from .core import *
+from .lnet import *
 from .sim import *

@@ -8,6 +8,7 @@ from numba import njit
 
 
 from .core import *
+from .lnet import *
 
 
 class LetterNetSim:
