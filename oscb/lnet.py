@@ -82,7 +82,11 @@ class LetterNet:
         N_CELLS_PER_COL=100,  # per mini-column capacity
         ALPHABET=Alphabet(),  # alphabet
     ):
+        self.SPARSE_FACTOR = SPARSE_FACTOR
+        self.N_CELLS_PER_COL = N_CELLS_PER_COL
+        self.ALPHABET = ALPHABET
         N_SPARSE_COLS_PER_LETTER = N_COLS_PER_LETTER * SPARSE_FACTOR
+        self.CELLS_SHAPE = ALPHABET.size * N_SPARSE_COLS_PER_LETTER, N_CELLS_PER_COL
 
         # each letter's representational cell indices up to column addressing
         self.sdr_indices = np.full(
@@ -107,10 +111,6 @@ class LetterNet:
         self.inhib_links = np.zeros(MAX_SYNAPSES, dtype=SYNAPSE_LINK_DTYPE)
         self.inhib_effis = np.zeros(MAX_SYNAPSES, dtype="f4")
         self.inhib_synap = 0
-
-        self.SPARSE_FACTOR = SPARSE_FACTOR
-        self.N_CELLS_PER_COL = N_CELLS_PER_COL
-        self.ALPHABET = ALPHABET
 
     """
     load factor affects synapse dropout behavior
