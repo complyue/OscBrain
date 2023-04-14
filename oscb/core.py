@@ -12,7 +12,8 @@ SYNAPSE_LINK_DTYPE = np.dtype(
     [
         ("i0", "uint32"),  # flatterned index of presynaptic cell
         ("i1", "uint32"),  # flatterned index of postsynaptic cell
-    ]
+    ],
+    align=True,
 )
 
 

@@ -10,12 +10,17 @@ from numba import njit
 from .core import *
 from .lnet import *
 
+from . import bkh
+
 
 class LetterNetSim:
     """
     Simulator with a LetterNet
 
     """
+
+    # the ratio of minicolumn span, on the x-axis of plot, against a unit time step
+    COL_PLOT_WIDTH = 0.8
 
     def __init__(
         self,
@@ -34,6 +39,14 @@ class LetterNetSim:
         #   how many presynaptic spikes is enough to trigger a postsynaptic spike,
         #   when each synapse has a unit efficacy value of 1.0
         SYNAP_FACTOR=500,
+        # fire plot params
+        plot_width=800,
+        plot_height=600,
+        plot_n_steps=100,
+        fire_dots_glyph="square",
+        fire_dots_alpha=0.01,
+        fire_dots_size=3,
+        fire_dots_color="#0000FF",
     ):
         self.lnet = lnet
         self.VOLT_REST = VOLT_REST
@@ -42,11 +55,107 @@ class LetterNetSim:
         self.τ_m = τ_m
         self.SYNAP_FACTOR = SYNAP_FACTOR
 
-        # cell voltage, ranging
         self.cell_volts = np.full(lnet.CELLS_SHAPE, VOLT_REST, "f4")
 
-        # timestep
-        self.ts = 0
+        self.done_n_steps = 0
+        self.ds_spikes = bkh.ColumnDataSource(
+            {
+                "x": [],
+                "y": [],
+            }
+        )
+
+        p = bkh.figure(
+            title="Letter Spikes",
+            x_axis_label="Time Step",
+            y_axis_label="Column (with Letter Spans)",
+            width=plot_width,
+            height=plot_height,
+            y_range=(0, lnet.CELLS_SHAPE[0]),
+            x_range=(0, plot_n_steps),
+        )
+
+        label_ys = np.arange(1, lnet.ALPHABET_SIZE + 1) * lnet.N_SPARSE_COLS_PER_LETTER
+        for i in range(label_ys.size):
+            p.add_layout(
+                bkh.Span(
+                    location=label_ys[i],
+                    dimension="width",
+                    line_color="gray",
+                    line_width=0.5,
+                )
+            )
+        p.yaxis.ticker = bkh.FixedTicker(ticks=label_ys)
+        p.yaxis.formatter = bkh.CustomJSTickFormatter(
+            code=f"""
+    return {list(lnet.ALPHABET.alphabet())!r}[tick/{lnet.N_SPARSE_COLS_PER_LETTER}-1];
+"""
+        )
+
+        p.scatter(
+            source=self.ds_spikes,
+            marker=fire_dots_glyph,
+            alpha=fire_dots_alpha,
+            size=fire_dots_size,
+            color=fire_dots_color,
+        )
+
+        self.fig = p
+
+    def simulate(
+        self,
+        n_steps,
+        prompt_words,  # a single word or list of words to prompt
+        prompt_col_density=0.5,  # how many columns per letter to spike
+        prompt_cel_density=0.5,  # how many cells per column to spike
+        prompt_pace=1,  # time step distance between letter spikes
+    ):
+        lnet = self.lnet
+
+        _w_bound, w_lcode = lnet.ALPHABET.encode_words(
+            [prompt_words] if isinstance(prompt_words, str) else prompt_words
+        )
+
+        if isinstance(prompt_col_density, float):
+            assert 0 < prompt_col_density <= 1.0
+            prompt_col_density = int(prompt_col_density * lnet.N_COLS_PER_LETTER)
+        if isinstance(prompt_cel_density, float):
+            assert 0 < prompt_cel_density <= 1.0
+            prompt_cel_density = int(prompt_cel_density * lnet.N_CELLS_PER_COL)
+
+        spikes, step_n_spikes = _simulate_lnet(
+            n_steps,
+            self.cell_volts,
+            *lnet._excitatory_synapses(),
+            *lnet._inhibitory_synapses(),
+            lnet.sdr_indices,
+            w_lcode,
+            prompt_col_density,
+            prompt_cel_density,
+            prompt_pace,
+            self.VOLT_RESET,
+            self.SPIKE_THRES,
+            self.VOLT_REST,
+            self.τ_m,
+            self.SYNAP_FACTOR,
+        )
+
+        x_base = self.done_n_steps
+        ci, ici = np.divmod(spikes, lnet.N_CELLS_PER_COL)
+        si = 0
+        xs, ys = [], []
+        for n_spikes in step_n_spikes:
+            if n_spikes > 0:
+                next_si = si + n_spikes
+                xs.append(
+                    x_base
+                    + self.COL_PLOT_WIDTH * ici[si:next_si] / lnet.N_CELLS_PER_COL
+                )
+                ys.append(ci[si:next_si])
+                si = next_si
+            x_base += 1
+        self.done_n_steps = x_base
+        self.ds_spikes.stream({"x": np.concatenate(xs), "y": np.concatenate(ys)})
 
 
 @njit
@@ -102,8 +211,6 @@ def _simulate_lnet(
     inhib_postsynap_ci, inhib_postsynap_ici = np.divmod(
         inhib_links["i1"], N_CELLS_PER_COL
     )
-
-    ALPHABET_SIZE, N_COLS_PER_LETTER = sdr_indices.shape
 
     def ensure_prompted_spikes(lcode):
         for ci in np.random.choice(

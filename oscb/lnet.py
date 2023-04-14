@@ -141,7 +141,47 @@ class LetterNet:
     def N_SPARSE_COLS_PER_LETTER(self):
         return self.N_COLS_PER_LETTER * self.SPARSE_FACTOR
 
-    def create_inhibitory_links_randomly(self, n, compact=True, normalize=True):
+    def _excitatory_synapses(self):
+        return (
+            self.excit_links[: self.excit_synap],
+            self.excit_effis[: self.excit_synap],
+        )
+
+    def excitatory_synapses(self):
+        links, effis = self._excitatory_synapses()
+        ci0, ici0 = np.divmod(links["i0"], self.N_CELLS_PER_COL)
+        ci1, ici1 = np.divmod(links["i1"], self.N_CELLS_PER_COL)
+        return pd.DataFrame(
+            {
+                "from_column": ci0,
+                "from_cell": ici0,
+                "to_column": ci1,
+                "to_cell": ici1,
+                "efficacy": effis,
+            }
+        )
+
+    def _inhibitory_synapses(self):
+        return (
+            self.inhib_links[: self.inhib_synap],
+            self.inhib_effis[: self.inhib_synap],
+        )
+
+    def inhibitory_synapses(self):
+        links, effis = self._inhibitory_synapses()
+        ci0, ici0 = np.divmod(links["i0"], self.N_CELLS_PER_COL)
+        ci1, ici1 = np.divmod(links["i1"], self.N_CELLS_PER_COL)
+        return pd.DataFrame(
+            {
+                "from_column": ci0,
+                "from_cell": ici0,
+                "to_column": ci1,
+                "to_cell": ici1,
+                "efficacy": effis,
+            }
+        )
+
+    def create_inhibitory_links_randomly(self, n, compact=True, normalize=False):
         assert 0 < n < self.MAX_SYNAPSES
         self.inhib_synap = _connect_synapses_randomly(
             n,
@@ -166,7 +206,7 @@ class LetterNet:
                 self.inhib_links, self.inhib_effis, self.inhib_synap
             )
 
-    def create_excitatory_links_randomly(self, n, compact=True, normalize=True):
+    def create_excitatory_links_randomly(self, n, compact=True, normalize=False):
         assert 0 < n < self.MAX_SYNAPSES
         self.excit_synap = _connect_synapses_randomly(
             n,
@@ -191,7 +231,7 @@ class LetterNet:
                 self.excit_links, self.excit_effis, self.excit_synap
             )
 
-    def learn_words_as_sequence(self, words, compact=True, normalize=True):
+    def learn_words_as_sequence(self, words, compact=True, normalize=False):
         _, w_lcode = self.ALPHABET.encode_words(words)
         self.excit_synap = _connect_letter_sequence(
             self.sdr_indices,
@@ -214,14 +254,13 @@ class LetterNet:
                 self.excit_links, self.excit_effis, self.excit_synap
             )
 
-    def learn_words(self, words, compact=True, normalize=True):
+    def learn_words(self, words, compact=True, normalize=False):
         w_bound, w_lcode = self.ALPHABET.encode_words(words)
         self.excit_synap = _connect_per_words(
             self.sdr_indices,
             self.excit_links,
             self.excit_effis,
             self.excit_synap,
-            w_lcode,
             w_bound,
             w_lcode,
             self.LOAD_FACTOR,
@@ -280,7 +319,7 @@ def _compact_synapses(links, effis, vlen, LOAD_FACTOR=0.8):
     new_links = np.empty_like(links)
     new_effis = np.empty_like(effis)
     new_vlen = 0
-    for i in np.argsort(links.view("uint64")[:vlen]):
+    for i in np.argsort(links.view(np.byte).view(np.uint64)[:vlen]):
         if (
             new_vlen > 0
             and links[i]["i0"] == new_links[new_vlen - 1]["i0"]

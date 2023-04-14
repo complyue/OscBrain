@@ -7,6 +7,7 @@ __all__ = [
     "ColumnDataSource",
     "figure",
     "show",
+    "push_notebook",
     "Range1d",
     "LinearAxis",
     "HoverTool",
@@ -37,6 +38,8 @@ __all__ = [
     "Paragraph",
     "PreText",
     "BasicTicker",
+    "FixedTicker",
+    "CustomJSTickFormatter",
     "Span",
     "Whisker",
     "Label",
@@ -52,6 +55,7 @@ from bokeh.embed import *
 from bokeh.layouts import *
 from bokeh.models import *
 from bokeh.plotting import *
+from bokeh.io import *
 
 import pandas as pd
 
