@@ -71,6 +71,16 @@ class LetterNetSim:
             y_axis_label="Column (with Letter Spans)",
             width=plot_width,
             height=plot_height,
+            tools=[
+                "pan",
+                "box_zoom",
+                "xwheel_zoom",
+                # "ywheel_zoom",
+                "undo",
+                "redo",
+                "reset",
+                # "crosshair",
+            ],
             y_range=(0, lnet.CELLS_SHAPE[0]),
             x_range=(0, plot_n_steps),
         )
