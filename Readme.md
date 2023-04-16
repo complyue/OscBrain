@@ -1,3 +1,3 @@
 # Oscillationary Brains
 
-> An oscillationary approach to decipher brain/neuron networks
+> An oscillationary approach to utilize brain/neuron networks

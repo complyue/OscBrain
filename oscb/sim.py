@@ -26,6 +26,11 @@ class LetterNetSim:
         self,
         # LetterNet, unit synaptic efficacy assumed to be valued 1.0
         lnet: LetterNet,
+        # global scaling factor, to accommodate a unit synaptic efficacy value of 1.0
+        # roughly this specifies that:
+        #   how many presynaptic spikes is enough to trigger a postsynaptic spike,
+        #   when each incoming firing synapse has a unit efficacy value of 1.0
+        SYNAP_FACTOR=5,
         # rest voltage, simplified to be 0.0
         VOLT_REST=0.0,
         # threshold voltage for a spike, simplified to be 1.0
@@ -34,11 +39,6 @@ class LetterNetSim:
         VOLT_RESET=-0.1,
         # membrane time constant
         τ_m=10,
-        # global scaling factor, to accommodate a unit synaptic efficacy value of 1.0
-        # roughly this specifies that:
-        #   how many presynaptic spikes is enough to trigger a postsynaptic spike,
-        #   when each synapse has a unit efficacy value of 1.0
-        SYNAP_FACTOR=500,
         # fire plot params
         plot_width=800,
         plot_height=600,
@@ -195,7 +195,7 @@ def _simulate_lnet(
     assert inhib_links.ndim == inhib_effis.ndim == 1
     assert inhib_links.shape == inhib_effis.shape
     assert prompt_lcodes.ndim == 1
-    assert 1 <= prompt_lcodes.size <= n_steps
+    assert 0 <= prompt_lcodes.size <= n_steps
     assert 1 <= prompt_pace < n_steps
 
     N_COLS, N_CELLS_PER_COL = cell_volts.shape
