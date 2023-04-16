@@ -76,7 +76,7 @@ class LetterNet:
 
     def __init__(
         self,
-        MAX_SYNAPSES=1000000,  # max number of synapses, one million by default
+        MAX_SYNAPSES=1_000_000,  # max number of synapses, one million by default
         N_COLS_PER_LETTER=10,  # distributedness of letter SDR
         SPARSE_FACTOR=5,  # sparseness of letter SDR
         N_CELLS_PER_COL=100,  # per mini-column capacity
@@ -182,7 +182,7 @@ class LetterNet:
         )
 
     def create_inhibitory_links_randomly(self, n, compact=True, normalize=False):
-        assert 0 < n < self.MAX_SYNAPSES
+        assert 0 < n
         self.inhib_synap = _connect_synapses_randomly(
             n,
             self.inhib_links,
@@ -207,7 +207,7 @@ class LetterNet:
             )
 
     def create_excitatory_links_randomly(self, n, compact=True, normalize=False):
-        assert 0 < n < self.MAX_SYNAPSES
+        assert 0 < n
         self.excit_synap = _connect_synapses_randomly(
             n,
             self.excit_links,
