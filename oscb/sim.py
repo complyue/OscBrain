@@ -66,7 +66,7 @@ class LetterNetSim:
         )
 
         p = bkh.figure(
-            title="Letter Spikes",
+            title="Letter SDR Spikes",
             x_axis_label="Time Step",
             y_axis_label="Column (with Letter Spans)",
             width=plot_width,
@@ -85,20 +85,13 @@ class LetterNetSim:
             x_range=(0, plot_n_steps),
         )
 
-        label_ys = np.arange(1, lnet.ALPHABET_SIZE + 1) * lnet.N_SPARSE_COLS_PER_LETTER
-        for i in range(label_ys.size):
-            p.add_layout(
-                bkh.Span(
-                    location=label_ys[i],
-                    dimension="width",
-                    line_color="gray",
-                    line_width=0.5,
-                )
-            )
+        label_ys = (
+            np.arange(1, lnet.ALPHABET_SIZE + 1) * lnet.N_SPARSE_COLS_PER_LETTER - 1
+        )
         p.yaxis.ticker = bkh.FixedTicker(ticks=label_ys)
         p.yaxis.formatter = bkh.CustomJSTickFormatter(
             code=f"""
-    return {list(lnet.ALPHABET.alphabet())!r}[tick/{lnet.N_SPARSE_COLS_PER_LETTER}-1];
+return {list(lnet.ALPHABET.alphabet())!r}[(tick+1)/{lnet.N_SPARSE_COLS_PER_LETTER}-1];
 """
         )
 
