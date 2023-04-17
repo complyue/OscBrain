@@ -9,7 +9,13 @@ tasks:
   - name: Setup Dependent Packages
     init: |
       # create conda env
-      conda create -n oscb python=3.10 numpy pandas numba bokeh nltk
+      conda create -n oscb python=3.10 ipykernel numpy pandas numba bokeh nltk
+      conda activate oscb
+      python -m ipykernel install --name oscb --user
+    command: |
+      # start notebook server
+      conda activate oscb
+      jupyter notebook
 
 vscode:
   extensions:
