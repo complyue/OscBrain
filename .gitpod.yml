@@ -3,10 +3,10 @@ image:
 
 ports:
   - port: 8000-9000
-    onOpen: open-browser
+    onOpen: open-preview
 
 tasks:
-  - name: Setup Dependent Packages
+  - name: Setup Dev Env
     init: |
       # update conda to latest version
       conda update -y -n base -c conda-forge conda
