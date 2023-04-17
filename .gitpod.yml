@@ -9,9 +9,9 @@ tasks:
   - name: Setup Dependent Packages
     init: |
       # update conda to latest version
-      conda update -n base -c conda-forge conda
+      conda update -y -n base -c conda-forge conda
       # create conda env
-      conda -y create -n oscb python=3.10 ipykernel notebook numpy pandas numba bokeh nltk
+      conda create -y -n oscb python=3.10 ipykernel notebook numpy pandas numba bokeh nltk
       conda activate oscb
       python -m ipykernel install --name oscb --user
     command: |
