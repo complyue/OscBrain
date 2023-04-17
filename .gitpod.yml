@@ -10,18 +10,22 @@ tasks:
     init: |
       # update conda to latest version
       conda update -y -n base -c conda-forge conda
-      # create conda env
+      # create the conda env with dependencies
       conda create -y -n oscb python=3.10 ipykernel notebook numpy pandas numba bokeh nltk
       conda activate oscb
+      # register this conda env as a NB kernel spec
       python -m ipykernel install --name oscb --user
     command: |
-      # start notebook server
+      # activate the conda env
       conda activate oscb
-      jupyter notebook
+      # trust NBs
+      jupyter trust Walkthrough.ipynb
+      # start notebook server
+      #    https://github.com/gitpod-io/gitpod/issues/758#issuecomment-525706696
+      jupyter notebook --NotebookApp.allow_origin=\'$(gp url 8888)\'
 
 vscode:
   extensions:
-    - ms-python.vscode-pylance
     - ms-python.python
 
 github:
