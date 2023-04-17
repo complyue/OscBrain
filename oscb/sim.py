@@ -79,7 +79,7 @@ class LetterNetSim:
                 "undo",
                 "redo",
                 "reset",
-                # "crosshair",
+                "crosshair",
             ],
             y_range=(0, lnet.CELLS_SHAPE[0]),
             x_range=(0, plot_n_steps),
