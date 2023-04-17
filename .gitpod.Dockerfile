@@ -1,4 +1,4 @@
-FROM gitpod/workspace-python:latest
+FROM condaforge/mambaforge:latest
 
 USER gitpod
 
