@@ -8,8 +8,10 @@ ports:
 tasks:
   - name: Setup Dependent Packages
     init: |
+      # update conda to latest version
+      conda update -n base -c conda-forge conda
       # create conda env
-      conda create -n oscb python=3.10 ipykernel numpy pandas numba bokeh nltk
+      conda -y create -n oscb python=3.10 ipykernel notebook numpy pandas numba bokeh nltk
       conda activate oscb
       python -m ipykernel install --name oscb --user
     command: |
