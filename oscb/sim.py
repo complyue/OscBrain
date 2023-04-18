@@ -190,7 +190,7 @@ def _simulate_lnet(
     #   how many presynaptic spikes is enough to trigger a postsynaptic spike,
     #   when each synapse has a unit efficacy value of 1.0
     #   todo: justify, this is sorta global inhibition?
-    SYNAP_FACTOR=500,
+    SYNAP_FACTOR=5,
 ):
     assert 0 < n_steps <= 20000
     assert excit_links.ndim == excit_effis.ndim == 1
