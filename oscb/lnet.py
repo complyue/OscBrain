@@ -22,7 +22,7 @@ class Alphabet:
 
     @staticmethod
     def alphabet():
-        return np.array([chr(c) for c in range(ord("a"), ord("z") + 1)], "U8")
+        return np.array([chr(c) for c in range(ord("a"), ord("z") + 1)], "U1")
 
     @staticmethod
     def encode_words(words):
@@ -116,8 +116,7 @@ class LetterNet:
     load factor affects synapse dropout behavior
 
     once number of synapses exceeds MAX_SYNAPSES, weakest synapse links will
-    be dropped out, so that the strongest synaptic links per this ration is
-    kept.
+    be dropped out, so that the strongest synaptic links per this ratio is kept.
     """
     LOAD_FACTOR = 0.8
 
