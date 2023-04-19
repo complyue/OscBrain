@@ -368,22 +368,27 @@ def _connect_per_words(
         # randomly pick 1 column from each letter's representational columns,
         # then randomly pick 1 cell from that column
         pre_lcode = w_lcode[l_bound]
+        pre_ci = np.random.randint(N_COLS_PER_LETTER)
+        pre_ici = np.random.randint(N_CELLS_PER_COL)
         for post_lcode in w_lcode[l_bound + 1 : r_bound]:
+            post_ci = np.random.randint(N_COLS_PER_LETTER)
+            post_ici = np.random.randint(N_CELLS_PER_COL)
+
             if vlen >= links.size:
                 # compat the synapses once exceeding allowed maximum
                 vlen = _compact_synapses(links, effis, vlen, LOAD_FACTOR)
 
-            links[vlen]["i0"] = sdr_indices[pre_lcode][
-                np.random.randint(N_COLS_PER_LETTER)
-            ] * N_CELLS_PER_COL + np.random.randint(N_CELLS_PER_COL)
-            links[vlen]["i1"] = sdr_indices[post_lcode][
-                np.random.randint(N_COLS_PER_LETTER)
-            ] * N_CELLS_PER_COL + np.random.randint(N_CELLS_PER_COL)
+            links[vlen]["i0"] = (
+                sdr_indices[pre_lcode][pre_ci] * N_CELLS_PER_COL + pre_ici
+            )
+            links[vlen]["i1"] = (
+                sdr_indices[post_lcode][post_ci] * N_CELLS_PER_COL + post_ici
+            )
             effis[vlen] = 1.0
 
             vlen += 1
 
-            pre_lcode = post_lcode
+            pre_lcode, pre_ci, pre_ici = post_lcode, post_ci, post_ici
         l_bound = r_bound
 
     return vlen
@@ -402,26 +407,29 @@ def _connect_letter_sequence(
     ALPHABET_SIZE, N_COLS_PER_LETTER = sdr_indices.shape
     assert np.all((0 <= lcode_seq) & (lcode_seq < ALPHABET_SIZE))
 
+    # connect 1 unit synapse for each pair of consecutive letters
+    # randomly pick 1 column from each letter's representational columns,
+    # then randomly pick 1 cell from that column
     pre_lcode = lcode_seq[0]
+    pre_ci = np.random.randint(N_COLS_PER_LETTER)
+    pre_ici = np.random.randint(N_CELLS_PER_COL)
     for post_lcode in lcode_seq[1:]:
-        # connect 1 unit synapse for each pair of consecutive letters
-        # randomly pick 1 column from each letter's representational columns,
-        # then randomly pick 1 cell from that column
+        post_ci = np.random.randint(N_COLS_PER_LETTER)
+        post_ici = np.random.randint(N_CELLS_PER_COL)
+
         if vlen >= links.size:
             # compat the synapses once exceeding allowed maximum
             vlen = _compact_synapses(links, effis, vlen, LOAD_FACTOR)
 
-        links[vlen]["i0"] = sdr_indices[pre_lcode][
-            np.random.randint(N_COLS_PER_LETTER)
-        ] * N_CELLS_PER_COL + np.random.randint(N_CELLS_PER_COL)
-        links[vlen]["i1"] = sdr_indices[post_lcode][
-            np.random.randint(N_COLS_PER_LETTER)
-        ] * N_CELLS_PER_COL + np.random.randint(N_CELLS_PER_COL)
+        links[vlen]["i0"] = sdr_indices[pre_lcode][pre_ci] * N_CELLS_PER_COL + pre_ici
+        links[vlen]["i1"] = (
+            sdr_indices[post_lcode][post_ci] * N_CELLS_PER_COL + post_ici
+        )
         effis[vlen] = 1.0
 
         vlen += 1
 
-        pre_lcode = post_lcode
+        pre_lcode, pre_ci, pre_ici = post_lcode, post_ci, post_ici
 
     return vlen
 
