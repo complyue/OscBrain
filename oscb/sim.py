@@ -31,11 +31,7 @@ class LetterNetSim:
         #   how many presynaptic spikes is enough to trigger a postsynaptic spike,
         #   when each incoming firing synapse has a unit efficacy value of 1.0
         SYNAP_FACTOR=5,
-        # rest voltage, simplified to be 0.0
-        VOLT_REST=0.0,
-        # threshold voltage for a spike, simplified to be 1.0
-        SPIKE_THRES=1.0,
-        # reset voltage, equal to VOLT_REST, or lower to enable refractory period
+        # reset voltage, negative to enable refractory period
         VOLT_RESET=-0.1,
         # membrane time constant
         τ_m=10,
@@ -49,13 +45,11 @@ class LetterNetSim:
         fire_dots_color="#0000FF",
     ):
         self.lnet = lnet
-        self.VOLT_REST = VOLT_REST
-        self.SPIKE_THRES = SPIKE_THRES
         self.VOLT_RESET = VOLT_RESET
         self.τ_m = τ_m
         self.SYNAP_FACTOR = SYNAP_FACTOR
 
-        self.cell_volts = np.full(lnet.CELLS_SHAPE, VOLT_REST, "f4")
+        self.cell_volts = np.full(lnet.CELLS_SHAPE, 0, "f4")
 
         self.done_n_steps = 0
         self.ds_spikes = bkh.ColumnDataSource(
@@ -109,22 +103,13 @@ return {list(lnet.ALPHABET.alphabet())!r}[(tick+1)/{lnet.N_SPARSE_COLS_PER_LETTE
         self,
         n_steps,
         prompt_words,  # a single word or list of words to prompt
-        prompt_col_density=0.5,  # how many columns per letter to spike
-        prompt_cel_density=0.5,  # how many cells per column to spike
-        prompt_pace=1,  # time step distance between letter spikes
+        prompt_blur=0.8,  # reduce voltage of other cells than the prompted letter
     ):
         lnet = self.lnet
 
         _w_bound, w_lcode = lnet.ALPHABET.encode_words(
             [prompt_words] if isinstance(prompt_words, str) else prompt_words
         )
-
-        if isinstance(prompt_col_density, float):
-            assert 0 < prompt_col_density <= 1.0
-            prompt_col_density = int(prompt_col_density * lnet.N_COLS_PER_LETTER)
-        if isinstance(prompt_cel_density, float):
-            assert 0 < prompt_cel_density <= 1.0
-            prompt_cel_density = int(prompt_cel_density * lnet.N_CELLS_PER_COL)
 
         spikes, step_n_spikes = _simulate_lnet(
             n_steps,
@@ -133,12 +118,8 @@ return {list(lnet.ALPHABET.alphabet())!r}[(tick+1)/{lnet.N_SPARSE_COLS_PER_LETTE
             *lnet._inhibitory_synapses(),
             lnet.sdr_indices,
             w_lcode,
-            prompt_col_density,
-            prompt_cel_density,
-            prompt_pace,
+            prompt_blur,
             self.VOLT_RESET,
-            self.SPIKE_THRES,
-            self.VOLT_REST,
             self.τ_m,
             self.SYNAP_FACTOR,
         )
@@ -164,6 +145,10 @@ return {list(lnet.ALPHABET.alphabet())!r}[(tick+1)/{lnet.N_SPARSE_COLS_PER_LETTE
         self.ds_spikes.stream({"x": np.concatenate(xs), "y": np.concatenate(ys)})
 
 
+# threshold voltage for a spike, simplified to be 1.0 globally, as constant
+SPIKE_THRES = 1.0
+
+
 @njit
 def _simulate_lnet(
     n_steps,  # total number of time steps to simulate
@@ -177,17 +162,9 @@ def _simulate_lnet(
     inhib_effis,
     sdr_indices,  # letter SDR indices
     prompt_lcodes,  # letter code sequence
-    prompt_col_density,  # how many columns per letter to spike
-    prompt_cel_density,  # how many cells per column to spike
-    prompt_pace=1,  # time step distance between letter spikes
-    # rest voltage, simplified to be 0.0
-    VOLT_REST=0.0,
-    # threshold voltage for a spike, simplified to be 1.0
-    SPIKE_THRES=1.0,
-    # reset voltage, equal to VOLT_REST, or lower to enable refractory period
-    VOLT_RESET=-0.1,
-    # membrane time constant
-    τ_m=10,
+    prompt_blur=0.8,  # reduce voltage of other cells than the prompted letter
+    VOLT_RESET=-0.1,  # reset voltage, negative to enable refractory period
+    τ_m=10,  # membrane time constant
     # global scaling factor, to facilitate a unit synaptic efficacy value of 1.0
     # roughly this specifies that:
     #   how many presynaptic spikes is enough to trigger a postsynaptic spike,
@@ -202,8 +179,9 @@ def _simulate_lnet(
     assert inhib_links.shape == inhib_effis.shape
     assert prompt_lcodes.ndim == 1
     assert 0 <= prompt_lcodes.size <= n_steps
-    assert 1 <= prompt_pace < n_steps
+    assert 0 <= prompt_blur <= 1.0
 
+    # ALPHABET_SIZE, N_COLS_PER_LETTER = sdr_indices.shape
     N_COLS, N_CELLS_PER_COL = cell_volts.shape
     excit_presynap_ci, excit_presynap_ici = np.divmod(
         excit_links["i0"], N_CELLS_PER_COL
@@ -218,15 +196,20 @@ def _simulate_lnet(
         inhib_links["i1"], N_CELLS_PER_COL
     )
 
-    def ensure_prompted_spikes(lcode):
-        for ci in np.random.choice(
-            sdr_indices[lcode], prompt_col_density, replace=False
-        ):
-            for ici in np.random.choice(
-                N_CELLS_PER_COL, prompt_cel_density, replace=False
-            ):
-                if not (cell_volts[ci, ici] >= SPIKE_THRES):
-                    cell_volts[ci, ici] = SPIKE_THRES
+    def prompt_letter(lcode):
+        letter_volts = cell_volts[sdr_indices[lcode], :]
+
+        # suppress all cells first
+        #    https://github.com/numba/numba/issues/8616
+        cell_volts.ravel()[cell_volts.ravel() > 0] *= prompt_blur
+
+        if np.any(letter_volts >= SPIKE_THRES):
+            # some cell(s) of prompted letter would fire
+            # restore letter cell voltages
+            cell_volts[sdr_indices[lcode], :] = letter_volts
+        else:  # no cell of prompted letter would fire
+            # force fire all of the letter's cells
+            cell_volts[sdr_indices[lcode], :] = SPIKE_THRES
 
     # we serialize the indices of spiked cells as the output record of simulation
     # pre-allocate sufficient capacity to store maximumally possible spike info
@@ -238,14 +221,11 @@ def _simulate_lnet(
     # intermediate state data for cell voltages
     cell_volts_tobe = np.empty_like(cell_volts)
 
-    next_prompt_i, last_prompt_ts = 0, -prompt_pace
+    prompt_i = 0
     for i_step in range(n_steps):
-        # apply prompt appropriately, force spikes at beginning of current time step
-        if next_prompt_i < prompt_lcodes.size:
-            if i_step - last_prompt_ts >= prompt_pace:
-                ensure_prompted_spikes(prompt_lcodes[next_prompt_i])
-                last_prompt_ts = i_step
-                next_prompt_i += 1
+        if prompt_i < prompt_lcodes.size:  # apply prompt
+            prompt_letter(prompt_lcodes[prompt_i])
+            prompt_i += 1
 
         # accumulate input current, according to presynaptic spikes
         cell_volts_tobe[:] = 0
@@ -279,7 +259,7 @@ def _simulate_lnet(
 
                 else:  # add back previous-voltage, plus leakage
                     # note it's just input-current before this update
-                    cell_volts_tobe[ci, ici] += v + (VOLT_REST - v) / τ_m
+                    cell_volts_tobe[ci, ici] += v + (0 - v) / τ_m
 
         # update the final state at end of this time step
         cell_volts[:] = cell_volts_tobe
