@@ -143,6 +143,9 @@ return {list(lnet.ALPHABET.alphabet())!r}[(tick+1)/{lnet.N_SPARSE_COLS_PER_LETTE
             self.SYNAP_FACTOR,
         )
 
+        if spikes.size <= 0:
+            return  # no spike at all
+
         x_base = self.done_n_steps
         ci, ici = np.divmod(spikes, lnet.N_CELLS_PER_COL)
         si = 0
