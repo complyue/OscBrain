@@ -200,8 +200,11 @@ def _simulate_lnet(
         letter_volts = cell_volts[sdr_indices[lcode], :]
 
         # suppress all cells first
+        #    only scale down positive potentials, but
         #    https://github.com/numba/numba/issues/8616
-        cell_volts.ravel()[cell_volts.ravel() > 0] *= prompt_blur
+        # cell_volts.ravel()[cell_volts.ravel() > 0] *= prompt_blur
+        #    or scale down all (refractory as well), some faster
+        cell_volts[:] *= prompt_blur
 
         if np.any(letter_volts >= SPIKE_THRES):
             # some cell(s) of prompted letter would fire
