@@ -26,11 +26,14 @@ class Alphabet:
 
     @staticmethod
     def encode_words(words):
+        if len(words) < 1:  # specialize special case
+            return np.empty(0, np.int32), np.empty(0, np.int8)
+
         lcode_base = ord("a")
 
         reserve_cap = len(words) * max(len(word) for word in words)
-        w_bound = np.zeros(len(words), "int32")
-        w_lcode = np.zeros(reserve_cap, "int8")
+        w_bound = np.zeros(len(words), np.int32)
+        w_lcode = np.zeros(reserve_cap, np.int8)
         n_words, n_letters = 0, 0
         for word in words:
             for letter in word.lower():
@@ -230,7 +233,14 @@ class LetterNet:
                 self.excit_links, self.excit_effis, self.excit_synap
             )
 
-    def learn_words_as_sequence(self, words, compact=True, normalize=False):
+    def learn_words_as_sequence(
+        self,
+        words,
+        sp_width=(3, 10),  # width of spike train: [n_columns, n_cells]
+        sp_thick=15,  # thickness of spike train
+        compact=True,
+        normalize=False,
+    ):
         _, w_lcode = self.ALPHABET.encode_words(words)
         self.excit_synap = _connect_letter_sequence(
             self.sdr_indices,
@@ -238,6 +248,8 @@ class LetterNet:
             self.excit_effis,
             self.excit_synap,
             w_lcode,
+            sp_width,
+            sp_thick,
             self.LOAD_FACTOR,
             self.N_CELLS_PER_COL,
         )
@@ -401,35 +413,56 @@ def _connect_letter_sequence(
     effis,
     vlen,
     lcode_seq,
+    sp_width=(3, 10),  # width of spike train: [n_columns, n_cells]
+    sp_thick=15,  # thickness of spike train
     LOAD_FACTOR=0.8,
     N_CELLS_PER_COL=100,  # per mini-column capacity
 ):
     ALPHABET_SIZE, N_COLS_PER_LETTER = sdr_indices.shape
     assert np.all((0 <= lcode_seq) & (lcode_seq < ALPHABET_SIZE))
+    assert len(sp_width) == 2
+    assert 1 <= sp_width[0] <= N_COLS_PER_LETTER
+    assert 1 <= sp_width[1] <= N_CELLS_PER_COL
+    assert 1 <= sp_thick <= sp_width[0] * sp_width[1]
 
-    # connect 1 unit synapse for each pair of consecutive letters
-    # randomly pick 1 column from each letter's representational columns,
-    # then randomly pick 1 cell from that column
+    def random_idxs_for_letter(lcode):
+        idxs = np.empty(sp_width, np.int32)
+        for i, ci in enumerate(
+            np.random.choice(sdr_indices[lcode], sp_width[0], replace=False)
+        ):
+            idxs[i, :] = ci * N_CELLS_PER_COL + np.random.choice(
+                np.arange(N_CELLS_PER_COL), sp_width[1], replace=False
+            )
+        return idxs.ravel()
+
     pre_lcode = lcode_seq[0]
-    pre_ci = np.random.randint(N_COLS_PER_LETTER)
-    pre_ici = np.random.randint(N_CELLS_PER_COL)
+    pre_idxs = random_idxs_for_letter(pre_lcode)
+
     for post_lcode in lcode_seq[1:]:
-        post_ci = np.random.randint(N_COLS_PER_LETTER)
-        post_ici = np.random.randint(N_CELLS_PER_COL)
+        post_idxs = random_idxs_for_letter(post_lcode)
 
         if vlen >= links.size:
             # compat the synapses once exceeding allowed maximum
             vlen = _compact_synapses(links, effis, vlen, LOAD_FACTOR)
 
-        links[vlen]["i0"] = sdr_indices[pre_lcode][pre_ci] * N_CELLS_PER_COL + pre_ici
-        links[vlen]["i1"] = (
-            sdr_indices[post_lcode][post_ci] * N_CELLS_PER_COL + post_ici
-        )
-        effis[vlen] = 1.0
+        # TODO: justify the decision here
+        #
+        # Alternative 1 - every presynaptic cell connect forward
+        #
+        # for pre_i in pre_idxs:
+        #     for post_i in np.random.choice(post_idxs, sp_thick):
+        #
+        # Alternative 2 - every postsynaptic cell connect backward
+        #
+        for post_i in post_idxs:
+            for pre_i in np.random.choice(pre_idxs, sp_thick):
+                links[vlen]["i0"] = pre_i
+                links[vlen]["i1"] = post_i
+                effis[vlen] = 1.0
 
-        vlen += 1
+                vlen += 1
 
-        pre_lcode, pre_ci, pre_ici = post_lcode, post_ci, post_ici
+        pre_lcode, pre_idxs = post_lcode, post_idxs
 
     return vlen
 
