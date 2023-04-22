@@ -149,7 +149,7 @@ return {list(lnet.ALPHABET.alphabet())!r}[(tick+1)/{lnet.N_SPARSE_COLS_PER_LETTE
 SPIKE_THRES = 1.0
 
 
-@njit
+@njit  # (debug=True)
 def _simulate_lnet(
     n_steps,  # total number of time steps to simulate
     # neuron voltages, both as input for initial states, and as output for final states
@@ -182,29 +182,15 @@ def _simulate_lnet(
     assert 0 <= prompt_blur <= 1.0
 
     # ALPHABET_SIZE, N_COLS_PER_LETTER = sdr_indices.shape
-    N_COLS, N_CELLS_PER_COL = cell_volts.shape
-    excit_presynap_ci, excit_presynap_ici = np.divmod(
-        excit_links["i0"], N_CELLS_PER_COL
-    )
-    excit_postsynap_ci, excit_postsynap_ici = np.divmod(
-        excit_links["i1"], N_CELLS_PER_COL
-    )
-    inhib_presynap_ci, inhib_presynap_ici = np.divmod(
-        inhib_links["i0"], N_CELLS_PER_COL
-    )
-    inhib_postsynap_ci, inhib_postsynap_ici = np.divmod(
-        inhib_links["i1"], N_CELLS_PER_COL
-    )
+    # N_COLS, N_CELLS_PER_COL = cell_volts.shape
+    # cvs be a flattened view of cell_volts
+    cvs = cell_volts.ravel()
 
     def prompt_letter(lcode):
         letter_volts = cell_volts[sdr_indices[lcode], :]
 
-        # suppress all cells first
-        #    only scale down positive potentials, but
-        #    https://github.com/numba/numba/issues/8616
-        # cell_volts.ravel()[cell_volts.ravel() > 0] *= prompt_blur
-        #    or scale down all (refractory as well), some faster
-        cell_volts[:] *= prompt_blur
+        # suppress all (except those in refractory period) cells first
+        cvs[cvs > 0] *= prompt_blur
 
         if np.any(letter_volts >= SPIKE_THRES):
             # some cell(s) of prompted letter would fire
@@ -216,13 +202,13 @@ def _simulate_lnet(
 
     # we serialize the indices of spiked cells as the output record of simulation
     # pre-allocate sufficient capacity to store maximumally possible spike info
-    spikes = np.empty(n_steps * cell_volts.size, "int32")
+    spikes = np.empty(n_steps * cvs.size, np.uint32)
     n_spikes = 0  # total number of individual spikes as recorded
     # record number of spikes per each time step, it may vary across steps
-    step_n_spikes = np.zeros(n_steps, "int32")
+    step_n_spikes = np.zeros(n_steps, np.uint32)
 
     # intermediate state data for cell voltages
-    cell_volts_tobe = np.empty_like(cell_volts)
+    cvs_tobe = np.empty_like(cvs)
 
     prompt_i = 0
     for i_step in range(n_steps):
@@ -231,41 +217,36 @@ def _simulate_lnet(
             prompt_i += 1
 
         # accumulate input current, according to presynaptic spikes
-        cell_volts_tobe[:] = 0
+        cvs_tobe[:] = 0
         for i in range(excit_links.size):
-            v = cell_volts[excit_presynap_ci[i], excit_presynap_ici[i]]
+            v = cvs[excit_links[i]["i0"]]
             if v >= SPIKE_THRES:
-                cell_volts_tobe[
-                    excit_postsynap_ci[i], excit_postsynap_ici[i]
-                ] += excit_effis[i]
+                cvs_tobe[excit_links[i]["i1"]] += excit_effis[i]
         for i in range(inhib_links.size):
-            v = cell_volts[inhib_presynap_ci[i], inhib_presynap_ici[i]]
+            v = cvs[inhib_links[i]["i0"]]
             if v >= SPIKE_THRES:
-                cell_volts_tobe[
-                    inhib_postsynap_ci[i], inhib_postsynap_ici[i]
-                ] -= inhib_effis[i]
+                cvs_tobe[inhib_links[i]["i1"]] -= inhib_effis[i]
         # apply the global scaling factor
-        cell_volts_tobe[:] /= SYNAP_FACTOR
+        cvs_tobe[:] /= SYNAP_FACTOR
 
         # reset voltage if fired, or update the voltage
-        for ci in range(N_COLS):
-            for ici in range(N_CELLS_PER_COL):
-                v = cell_volts[ci, ici]
-                if v >= SPIKE_THRES:
-                    # fired, reset
-                    cell_volts_tobe[ci, ici] = VOLT_RESET
+        for i in range(cvs.size):
+            v = cvs[i]
+            if v >= SPIKE_THRES:
+                # fired, reset
+                cvs_tobe[i] = VOLT_RESET
 
-                    # record the spike
-                    spikes[n_spikes] = ci * N_CELLS_PER_COL + ici
-                    n_spikes += 1
-                    step_n_spikes[i_step] += 1
+                # record the spike
+                spikes[n_spikes] = i
+                n_spikes += 1
+                step_n_spikes[i_step] += 1
 
-                else:  # add back previous-voltage, plus leakage
-                    # note it's just input-current before this update
-                    cell_volts_tobe[ci, ici] += v + (0 - v) / τ_m
+            else:  # add back previous-voltage, plus leakage
+                # note it's just input-current before this update
+                cvs_tobe[i] += v + (0 - v) / τ_m
 
         # update the final state at end of this time step
-        cell_volts[:] = cell_volts_tobe
+        cvs[:] = cvs_tobe
 
     assert n_spikes == np.sum(step_n_spikes), "bug?!"
     return (

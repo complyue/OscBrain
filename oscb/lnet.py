@@ -33,7 +33,7 @@ class Alphabet:
 
         reserve_cap = len(words) * max(len(word) for word in words)
         w_bound = np.zeros(len(words), np.int32)
-        w_lcode = np.zeros(reserve_cap, np.int8)
+        w_lcode = np.zeros(reserve_cap, np.uint8)
         n_words, n_letters = 0, 0
         for word in words:
             for letter in word.lower():
@@ -98,7 +98,7 @@ class LetterNet:
                 N_COLS_PER_LETTER,
             ),
             -1,
-            "int32",
+            np.uint32,
         )
         for lcode in range(ALPHABET.size):
             lbase = lcode * N_SPARSE_COLS_PER_LETTER
@@ -318,7 +318,7 @@ def _normalize_synapse_efficacies(links, effis, vlen):
     effis[:vlen] /= effis[0]
 
 
-@njit
+@njit  # (debug=True)
 def _compact_synapses(links, effis, vlen, LOAD_FACTOR=0.8):
     assert links.ndim == effis.ndim == 1
     assert links.shape == effis.shape
@@ -330,18 +330,19 @@ def _compact_synapses(links, effis, vlen, LOAD_FACTOR=0.8):
     new_links = np.empty_like(links)
     new_effis = np.empty_like(effis)
     new_vlen = 0
-    for i in np.argsort(links.view(np.byte).view(np.uint64)[:vlen]):
-        if (
-            new_vlen > 0
-            and links[i]["i0"] == new_links[new_vlen - 1]["i0"]
-            and links[i]["i1"] == new_links[new_vlen - 1]["i1"]
-        ):
+
+    # view the link as a whole
+    links_ho = links[:vlen].view(np.byte).view(np.uint64)
+    new_links_ho = new_links.view(np.byte).view(np.uint64)
+    for i in np.argsort(links_ho):
+        if new_vlen > 0 and new_links_ho[new_vlen - 1] == links_ho[i]:
             # accumulate efficacy
             new_effis[new_vlen - 1] += effis[i]
         else:
             # encounter a new distinct link
-            new_links[new_vlen] = links[i]
-            new_effis[new_vlen] = effis[i]
+            new_links_ho[new_vlen] = links_ho[i]
+            # new_links[new_vlen] = links[i]
+            # new_effis[new_vlen] = effis[i]
             new_vlen += 1
 
     # store new data back inplace
@@ -406,7 +407,7 @@ def _connect_per_words(
     return vlen
 
 
-@njit
+@njit  # (debug=True)
 def _connect_letter_sequence(
     sdr_indices,
     links,
@@ -425,25 +426,28 @@ def _connect_letter_sequence(
     assert 1 <= sp_width[1] <= N_CELLS_PER_COL
     assert 1 <= sp_thick <= sp_width[0] * sp_width[1]
 
+    if lcode_seq.size < 1:  # specialize the special case
+        return vlen
+
     def random_idxs_for_letter(lcode):
-        idxs = np.empty(sp_width, np.int32)
+        idxs = np.empty(sp_width, np.uint32)
         for i, ci in enumerate(
             np.random.choice(sdr_indices[lcode], sp_width[0], replace=False)
         ):
             idxs[i, :] = ci * N_CELLS_PER_COL + np.random.choice(
-                np.arange(N_CELLS_PER_COL), sp_width[1], replace=False
+                np.arange(N_CELLS_PER_COL, dtype=np.uint32), sp_width[1], replace=False
             )
         return idxs.ravel()
 
-    pre_lcode = lcode_seq[0]
+    # pre_lcode = lcode_seq[0]
+    # above seems to have signed/unsigned conversion bug, a Numba one?
+    for pre_lcode in lcode_seq:
+        break
+
     pre_idxs = random_idxs_for_letter(pre_lcode)
 
     for post_lcode in lcode_seq[1:]:
         post_idxs = random_idxs_for_letter(post_lcode)
-
-        if vlen >= links.size:
-            # compat the synapses once exceeding allowed maximum
-            vlen = _compact_synapses(links, effis, vlen, LOAD_FACTOR)
 
         # TODO: justify the decision here
         #
@@ -461,6 +465,10 @@ def _connect_letter_sequence(
                 effis[vlen] = 1.0
 
                 vlen += 1
+
+                if vlen >= links.size:
+                    # compat the synapses once exceeding allowed maximum
+                    vlen = _compact_synapses(links, effis, vlen, LOAD_FACTOR)
 
         pre_lcode, pre_idxs = post_lcode, post_idxs
 
