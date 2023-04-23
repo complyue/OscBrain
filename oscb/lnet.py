@@ -341,8 +341,7 @@ def _compact_synapses(links, effis, vlen, LOAD_FACTOR=0.8):
         else:
             # encounter a new distinct link
             new_links_ho[new_vlen] = links_ho[i]
-            # new_links[new_vlen] = links[i]
-            # new_effis[new_vlen] = effis[i]
+            new_effis[new_vlen] = effis[i]
             new_vlen += 1
 
     # store new data back inplace
