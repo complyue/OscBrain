@@ -121,7 +121,7 @@ class LetterNet:
     once number of synapses exceeds MAX_SYNAPSES, weakest synapse links will
     be dropped out, so that the strongest synaptic links per this ratio is kept.
     """
-    LOAD_FACTOR = 0.8
+    LOAD_FACTOR = 0.2
 
     @property
     def MAX_SYNAPSES(self):
