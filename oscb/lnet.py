@@ -267,7 +267,15 @@ class LetterNet:
                 self.excit_links, self.excit_effis, self.excit_synap
             )
 
-    def learn_words(self, words, compact=True, normalize=False):
+    def learn_words(
+        self,
+        words,
+        sp_width=(3, 10),  # width of spike train: [n_columns, n_cells]
+        sp_thick=15,  # thickness of spike train
+        link_back=False,  # create backward synapses too
+        compact=True,
+        normalize=False,
+    ):
         w_bound, w_lcode = self.ALPHABET.encode_words(words)
         self.excit_synap = _connect_per_words(
             self.sdr_indices,
@@ -276,6 +284,9 @@ class LetterNet:
             self.excit_synap,
             w_bound,
             w_lcode,
+            sp_width,
+            sp_thick,
+            link_back,
             self.LOAD_FACTOR,
             self.N_CELLS_PER_COL,
         )
@@ -370,39 +381,74 @@ def _connect_per_words(
     vlen,
     w_bound,
     w_lcode,
+    sp_width=(3, 10),  # width of spike train: [n_columns, n_cells]
+    sp_thick=15,  # thickness of spike train
+    link_back=False,  # create backward synapses too
     LOAD_FACTOR=0.8,
     N_CELLS_PER_COL=100,  # per mini-column capacity
 ):
     ALPHABET_SIZE, N_COLS_PER_LETTER = sdr_indices.shape
     assert np.all((0 <= w_lcode) & (w_lcode < ALPHABET_SIZE))
+    assert len(sp_width) == 2
+    assert 1 <= sp_width[0] <= N_COLS_PER_LETTER
+    assert 1 <= sp_width[1] <= N_CELLS_PER_COL
+    assert 1 <= sp_thick <= sp_width[0] * sp_width[1]
+
+    if w_lcode.size < 1:  # specialize the special case
+        return vlen
+
+    def random_idxs_for_letter(lcode):
+        idxs = np.empty(sp_width, np.uint32)
+        for i, ci in enumerate(
+            np.random.choice(sdr_indices[lcode], sp_width[0], replace=False)
+        ):
+            idxs[i, :] = ci * N_CELLS_PER_COL + np.random.choice(
+                np.arange(N_CELLS_PER_COL, dtype=np.uint32), sp_width[1], replace=False
+            )
+        return idxs.ravel()
 
     l_bound = 0
     for r_bound in w_bound:
-        # connect 1 unit synapse for each pair of consecutive letters
-        # randomly pick 1 column from each letter's representational columns,
-        # then randomly pick 1 cell from that column
-        pre_lcode = w_lcode[l_bound]
-        pre_ci = np.random.randint(N_COLS_PER_LETTER)
-        pre_ici = np.random.randint(N_CELLS_PER_COL)
+        assert r_bound > l_bound, "bug?!"
+
+        for pre_lcode in w_lcode[l_bound:]:
+            break
+
+        pre_idxs = random_idxs_for_letter(pre_lcode)
+
         for post_lcode in w_lcode[l_bound + 1 : r_bound]:
-            post_ci = np.random.randint(N_COLS_PER_LETTER)
-            post_ici = np.random.randint(N_CELLS_PER_COL)
+            post_idxs = random_idxs_for_letter(post_lcode)
 
-            if vlen >= links.size:
-                # compat the synapses once exceeding allowed maximum
-                vlen = _compact_synapses(links, effis, vlen, LOAD_FACTOR)
+            # TODO: justify the decision here
+            #
+            # Alternative 1 - every presynaptic cell connect forward
+            #
+            # for pre_i in pre_idxs:
+            #     for post_i in np.random.choice(post_idxs, sp_thick):
+            #
+            # Alternative 2 - every postsynaptic cell connect backward
+            #
+            for post_i in post_idxs:
+                for pre_i in np.random.choice(pre_idxs, sp_thick):
+                    if vlen >= links.size - 1:
+                        # compat the synapses once exceeding allowed maximum
+                        vlen = _compact_synapses(links, effis, vlen, LOAD_FACTOR)
 
-            links[vlen]["i0"] = (
-                sdr_indices[pre_lcode][pre_ci] * N_CELLS_PER_COL + pre_ici
-            )
-            links[vlen]["i1"] = (
-                sdr_indices[post_lcode][post_ci] * N_CELLS_PER_COL + post_ici
-            )
-            effis[vlen] = 1.0
+                    links[vlen]["i0"] = pre_i
+                    links[vlen]["i1"] = post_i
+                    effis[vlen] = 1.0
 
-            vlen += 1
+                    vlen += 1
 
-            pre_lcode, pre_ci, pre_ici = post_lcode, post_ci, post_ici
+                    if link_back:
+                        links[vlen]["i0"] = post_i
+                        links[vlen]["i1"] = pre_i
+                        effis[vlen] = 1.0
+
+                        vlen += 1
+
+            pre_lcode, pre_idxs = post_lcode, post_idxs
+
         l_bound = r_bound
 
     return vlen
@@ -443,6 +489,7 @@ def _connect_letter_sequence(
 
     # pre_lcode = lcode_seq[0]
     # above seems to have signed/unsigned conversion bug, a Numba one?
+    # below workarounds that
     for pre_lcode in lcode_seq:
         break
 
