@@ -238,6 +238,7 @@ class LetterNet:
         words,
         sp_width=(3, 10),  # width of spike train: [n_columns, n_cells]
         sp_thick=15,  # thickness of spike train
+        link_back=False,  # create backward synapses too
         compact=True,
         normalize=False,
     ):
@@ -250,6 +251,7 @@ class LetterNet:
             w_lcode,
             sp_width,
             sp_thick,
+            link_back,
             self.LOAD_FACTOR,
             self.N_CELLS_PER_COL,
         )
@@ -415,6 +417,7 @@ def _connect_letter_sequence(
     lcode_seq,
     sp_width=(3, 10),  # width of spike train: [n_columns, n_cells]
     sp_thick=15,  # thickness of spike train
+    link_back=False,  # create backward synapses too
     LOAD_FACTOR=0.8,
     N_CELLS_PER_COL=100,  # per mini-column capacity
 ):
@@ -459,15 +462,22 @@ def _connect_letter_sequence(
         #
         for post_i in post_idxs:
             for pre_i in np.random.choice(pre_idxs, sp_thick):
+                if vlen >= links.size - 1:
+                    # compat the synapses once exceeding allowed maximum
+                    vlen = _compact_synapses(links, effis, vlen, LOAD_FACTOR)
+
                 links[vlen]["i0"] = pre_i
                 links[vlen]["i1"] = post_i
                 effis[vlen] = 1.0
 
                 vlen += 1
 
-                if vlen >= links.size:
-                    # compat the synapses once exceeding allowed maximum
-                    vlen = _compact_synapses(links, effis, vlen, LOAD_FACTOR)
+                if link_back:
+                    links[vlen]["i0"] = post_i
+                    links[vlen]["i1"] = pre_i
+                    effis[vlen] = 1.0
+
+                    vlen += 1
 
         pre_lcode, pre_idxs = post_lcode, post_idxs
 
