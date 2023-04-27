@@ -104,6 +104,7 @@ return {list(lnet.ALPHABET.alphabet())!r}[(tick+1)/{lnet.N_SPARSE_COLS_PER_LETTE
         n_steps,
         prompt_words,  # a single word or list of words to prompt
         prompt_blur=0.8,  # reduce voltage of other cells than the prompted letter
+        force_prompt=False,  # force fire all cells as prompted
     ):
         lnet = self.lnet
 
@@ -119,6 +120,7 @@ return {list(lnet.ALPHABET.alphabet())!r}[(tick+1)/{lnet.N_SPARSE_COLS_PER_LETTE
             lnet.sdr_indices,
             w_lcode,
             prompt_blur,
+            force_prompt,
             self.VOLT_RESET,
             self.τ_m,
             self.SYNAP_FACTOR,
@@ -163,6 +165,7 @@ def _simulate_lnet(
     sdr_indices,  # letter SDR indices
     prompt_lcodes,  # letter code sequence
     prompt_blur=0.8,  # reduce voltage of other cells than the prompted letter
+    force_prompt=False,  # force fire all cells as prompted
     VOLT_RESET=-0.1,  # reset voltage, negative to enable refractory period
     τ_m=10,  # membrane time constant
     # global scaling factor, to facilitate a unit synaptic efficacy value of 1.0
@@ -192,13 +195,13 @@ def _simulate_lnet(
         # suppress all (except those in refractory period) cells first
         cvs[cvs > 0] *= prompt_blur
 
-        if np.any(letter_volts >= SPIKE_THRES):
+        if force_prompt or np.all(letter_volts < SPIKE_THRES):
+            # force fire all of the letter's cells
+            cell_volts[sdr_indices[lcode], :] = SPIKE_THRES
+        else:
             # some cell(s) of prompted letter would fire
             # restore letter cell voltages
             cell_volts[sdr_indices[lcode], :] = letter_volts
-        else:  # no cell of prompted letter would fire
-            # force fire all of the letter's cells
-            cell_volts[sdr_indices[lcode], :] = SPIKE_THRES
 
     # we serialize the indices of spiked cells as the output record of simulation
     # pre-allocate sufficient capacity to store maximumally possible spike info
