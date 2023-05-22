@@ -33,7 +33,7 @@ class Alphabet:
 
         reserve_cap = len(words) * max(len(word) for word in words)
         w_bound = np.zeros(len(words), np.int32)
-        w_lcode = np.zeros(reserve_cap, np.uint8)
+        w_lcode = np.zeros(reserve_cap, np.int8)
         n_words, n_letters = 0, 0
         for word in words:
             for letter in word.lower():
