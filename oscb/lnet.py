@@ -57,11 +57,13 @@ class Alphabet:
         assert w_bound[-1] == w_lcode.size
         assert np.all((0 <= w_lcode) & (w_lcode < 26))
 
+        lcode_base = ord("a")
+
         words = []
         l_bound = 0
         for r_bound in w_bound:
             words.append(
-                "".join(chr(ord("a") + lcode) for lcode in w_lcode[l_bound:r_bound])
+                "".join(chr(lcode_base + lcode) for lcode in w_lcode[l_bound:r_bound])
             )
             l_bound = r_bound
         return words
