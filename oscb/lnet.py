@@ -138,10 +138,6 @@ class LetterNet:
         return self.sdr_indices.shape[1]
 
     @property
-    def MAX_SYNAPSES(self):
-        return self.excit_links.size
-
-    @property
     def N_SPARSE_COLS_PER_LETTER(self):
         return self.N_COLS_PER_LETTER * self.SPARSE_FACTOR
 
