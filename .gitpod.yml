@@ -22,7 +22,7 @@ tasks:
       jupyter trust Walkthrough.ipynb
       # start notebook server
       #    https://github.com/gitpod-io/gitpod/issues/758#issuecomment-525706696
-      jupyter notebook --NotebookApp.allow_origin=\'$(gp url 8888)\'
+      jupyter notebook --NotebookApp.allow_origin=\'$(gp url 8888)\' --ServerApp.allow_remote_access=true
 
 vscode:
   extensions:
