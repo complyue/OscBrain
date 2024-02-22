@@ -11,7 +11,9 @@ tasks:
       # update conda to latest version
       conda update -y -n base -c conda-forge conda
       # create the conda env with dependencies
-      conda create -y -n oscb python=3.10 ipykernel ipywidgets notebook numpy pandas numba bokeh nltk
+      # XXX bokeh pre 3.4 won't work with Jupyter Notebook 7
+      # TODO try again after bokeh 3.4 is released & installable
+      conda create -y -n oscb python=3.10 ipykernel ipywidgets notebook=6.* numpy pandas numba bokeh nltk
       conda activate oscb
       # register this conda env as a NB kernel spec
       python -m ipykernel install --name oscb --user
@@ -22,7 +24,7 @@ tasks:
       jupyter trust Walkthrough.ipynb
       # start notebook server
       #    https://github.com/gitpod-io/gitpod/issues/758#issuecomment-525706696
-      jupyter notebook --NotebookApp.allow_origin=\'$(gp url 8888)\' --ServerApp.allow_remote_access=true
+      jupyter notebook --NotebookApp.allow_origin="$(gp url 8888)" --NotebookApp.allow_remote_access=true --ServerApp.allow_remote_access=true
 
 vscode:
   extensions:
